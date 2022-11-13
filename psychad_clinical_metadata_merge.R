@@ -11,7 +11,8 @@
   library(synapser)
   library(UpSetR)
   library(stringr)
-  synLogin('your_login','your_password')
+  #synLogin('your_login','your_password')
+  synLogin('bendl','Ejhe8uca!')
   
   ####################################
   # Helper functions
@@ -29,6 +30,7 @@
   ####################################
   # Synapse paths
   SYNAPSE = list(root = "syn22399913",
+                 individual_files = "syn22801001",
                  mssm_clinical_metadata = "syn26387767", 
                  hbcc_clinical_metadata = "syn23016097",
                  rush_clinical_metadata_1 = "syn35839674",
@@ -830,8 +832,8 @@
   write.csv(metadata[,prioritized], file = FINAL_METADATA_PATH, row.names=F)
   
   # Save metadata to Synapse
-  file = synStore(File(path="~/Desktop/clinical_metadata_full.csv", parent=SYNAPSE$root))
   file = synStore(File(path="~/Desktop/clinical_metadata.csv", parent=SYNAPSE$root))
+  file = synStore(File(path="~/Desktop/clinical_metadata_full.csv", parent=SYNAPSE$individual_files))
   
   # Copy merge & querying code for metadata to public github
   cmd_copy_metadata = paste0("cp ", unlist(PSYCHAD_METADATA_CODES), " ", PSYCHAD_METADATA_GITHUB_MINERVA)
@@ -875,9 +877,6 @@
   colnames(allInfoWcells) = c("snRNAseq_ID", "SubID", "poolName", "chr1_reads", "cell_count")
   write.csv(allInfoWcells, file=FINAL_ALLINFO_PATH, quote=F, row.names=F)
 }
-
-length(metadata[is.na(metadata$primary_genotype),"SubID"])
-nrow(allInfo[allInfo$SubID %in% metadata[is.na(metadata$primary_genotype),"SubID"],])
 
 ########################################################################################################
 # Final plots
