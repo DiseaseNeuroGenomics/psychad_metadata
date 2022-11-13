@@ -508,7 +508,7 @@
   RUSH_unique = RUSH_clinical_meta[,!colnames(RUSH_clinical_meta) %in% c("age_death","msex","race7","educ","pmi","ceradsc","braaksc", "Dx")]
   colnames(RUSH_unique) = gsub("projid","SubID",colnames(RUSH_unique))
   
-  #############################
+  ##############ffixsheet###############
   # Load & apply fixsheet (manual assignment of donors to diagnosis)
   fixsheet = read.csv(FIXSHEET)
   fixsheet = fixsheet[,c("SubID", "Comment", unlist(DIAGNOSIS_CLASSIFICATION))]
@@ -687,9 +687,160 @@
     nrow(allInfo[(allInfo$SubID == subID),])
   })
   
+  #metadata = metadata[metadata$SubID %in% fixsheet$SubID,]
+  
   # Remove donors without any snRNAseq library
   metadata = metadata[metadata$snRNAseq_ID_count > 0,]
 }
+
+unresolvedMssm = metadata[!(metadata$SubID %in% metadataRestrictive$SubID) & (metadata$Brain_bank == "MSSM"),]
+unresolvedMssm = unresolvedMssm[!is.na(unresolvedMssm$SNParray_PsychAD),]
+unresolvedMssm$problematic_fromSnpArray = ifelse(unresolvedMssm$SNParray_PsychAD %in% problematicSnpArray, T, NA)
+main = unresolvedMssm
+
+GENOTYPE_FILE_SEX_MISMATCHES = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_from_karen_sex_mismatch_samples_list.tsv" # provided by Karen :: List of samples with a mismatch between reported sex and genetically imputed sex from genotype inf
+GENOTYPE_FILE_SEX_GTCALLED = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/MA000115_Kleopoulos_PlatesP1-P13_annotated_all_CHR_updated_imputed_sex.sexcheck.csv"
+GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_sex_from_karen.tsv"
+GENOTYPE_FILE_PROBLEMATIC_MISSINGNESS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_from_karen_mind_0.05_het_3SD_samples.tsv" # provided by Karen :: List of samples with high (greater than 5%) missingness and/or excess (+/- 3SD) heterozygosity: /sc/arion/projects/roussp01a/karen/NPS_AD_imputed/phenotype_files/mind_0.05_het_3SD_samples.tsv --> I will remove these samples from the final version of QC'd/imputed data once the mismatches are rectified
+GENOTYPE_FILE_APOE_COMBINATIONS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/APOE_assignment_NPS_AD_microglia_phase2.txt"
+GENOTYPE_FILE_ANEUPLOIDY = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/genotypes_aneuploidy_samples_list.tsv"
+GENOTYPE_FILE_ETHNICITY = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/genotypes_ancestry_assignment_multinom_3_PCs.tsv"
+
+sexGtcalledArray = read.csv(GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN, sep="\t")
+sexGtcalledArray$SubID = sexGtcalledArray$SubID
+rownames(sexGtcalledArray) = sexGtcalledArray$SubID
+main$sex_fromGenotype = sapply(sexGtcalledArray[main$SNParray_PsychAD,"SNPSEX"], function(sex) {
+  ifelse(sex == "F", "Female", ifelse(sex == "M", "Male", "Unassigned"))
+})
+main$check_sex = main$sex_fromGenotype == main$Sex
+
+sexGtcalledArray = read.csv(GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN, sep="\t")
+sexGtcalledArray$SubID = sexGtcalledArray$SubID
+rownames(sexGtcalledArray) = sexGtcalledArray$SubID
+main$sex_fromGenotype = sapply(sexGtcalledArray[main$SNParray_PsychAD,"SNPSEX"], function(sex) {
+  ifelse(sex == "F", "Female", ifelse(sex == "M", "Male", "Unassigned"))
+})
+main$check_sex = main$sex_fromGenotype == main$Sex
+
+apoeFromSnpArray = read.csv(GENOTYPE_FILE_APOE_COMBINATIONS, sep="\t")
+main$ApoE_gt = as.character(main$apoe_genotype)
+main$ApoE_gt_fromSnpArray = apoeFromSnpArray[match(main$SNParray_PsychAD, apoeFromSnpArray$Formatted_ID), "apo_alleles"]
+main$ApoE_gt_fromSnpArray = gsub("[e/]", "", main$ApoE_gt_fromSnpArray)
+main$MetaMatch_ApoeE_snpArray = sapply(1:nrow(main), function(i) {
+  if(is.na(main[i,"ApoE_gt"]) | is.na(main[i,"ApoE_gt_fromSnpArray"])) {
+    NA
+  } else if(main[i,"ApoE_gt"] == main[i,"ApoE_gt_fromSnpArray"]) {
+    T
+  } else if(((main[i,"ApoE_gt"] == "13") | (main[i,"ApoE_gt"] == "24")) & (main[i,"ApoE_gt_fromSnpArray"] == "13_or_24")) {
+    T
+  } else {
+    F
+  }
+})
+main$check_apoe = main$ApoE_gt_fromSnpArray == main$apoe_genotype
+
+## SNParray :: Ethnicity
+ethnicitySnpArray = read.csv(GENOTYPE_FILE_ETHNICITY, sep="\t")
+main$Ethnicity_fromSnpArray = ethnicitySnpArray[match(main$SNParray_PsychAD, ethnicitySnpArray$Formatted_ID), "superpop"]
+print(">> SNParray :: Ethnicity")
+print(table(main$Ethnicity_fromSnpArray))
+main$Ethnicity_standardized = gsub("White", "EUR", gsub("Black", "AFR", gsub("Hispanic", "AMR", main$Ethnicity)))
+main$Ethnicity_standardized[main$Ethnicity_standardized %in% c("Other", "Unknown", "Asian", "American Indian or Alaska Native")] = NA
+
+main$MC_Demo_SNParray_Ethnicity = main$Ethnicity_standardized == main$Ethnicity_fromSnpArray
+
+ampad_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Ampad_PsychAD_SNParray.txt.kin", sep="\t")
+gtcheck_snRNAseq_CommonMind_SNParray = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__CommonMind_SNParray_PsychAD_SNParray.txt.kin", sep="\t")
+microglia_snparray = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Microglia_PsychAD_SNParray.txt.kin", sep="\t")
+commonmind_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__CommonMind_WGS_PsychAD_SNParray.txt.kin", sep="\t")
+adsp_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__PsychAD_SNParray_ADSP_WGS.txt.kin", sep="\t")
+rush_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Ps", sep="\t")
+
+####
+
+ampad_wgs_copy = ampad_wgs
+ampad_wgs_copy$ID1 = ampad_wgs$ID2
+ampad_wgs_copy$ID2 = ampad_wgs$ID1
+ampad_wgs_merged = rbind(ampad_wgs, ampad_wgs_copy)
+
+metadataExtern = EXTERNAL_METADATA$WGS_Ampad
+ampad_wgs_merged = ampad_wgs_merged[(ampad_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(ampad_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+dim(ampad_wgs_merged)
+ampad_wgs_merged = ampad_wgs_merged[ampad_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
+View(ampad_wgs_merged)
+write.csv(ampad_wgs_merged[order(ampad_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/ampad.csv")
+
+####
+
+gtcheck_snRNAseq_CommonMind_SNParray_copy = gtcheck_snRNAseq_CommonMind_SNParray
+gtcheck_snRNAseq_CommonMind_SNParray_copy$ID1 = gtcheck_snRNAseq_CommonMind_SNParray$ID2
+gtcheck_snRNAseq_CommonMind_SNParray_copy$ID2 = gtcheck_snRNAseq_CommonMind_SNParray$ID1
+gtcheck_snRNAseq_CommonMind_SNParray_merged = rbind(gtcheck_snRNAseq_CommonMind_SNParray, gtcheck_snRNAseq_CommonMind_SNParray_copy)
+
+metadataExtern = EXTERNAL_METADATA$SNParray_CommonMind
+gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% main$SNParray_PsychAD,]
+gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2_CMC_ID = metadataExtern[match(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2, metadataExtern$SNP_report.Genotyping_Sample_ID),"Individual_ID"]
+dim(gtcheck_snRNAseq_CommonMind_SNParray_merged)
+write.csv(gtcheck_snRNAseq_CommonMind_SNParray_merged[order(gtcheck_snRNAseq_CommonMind_SNParray_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/commonmind.csv")
+
+####
+
+gtcheck_snRNAseq_CommonMind_SNParray_copy = commonmind_wgs
+gtcheck_snRNAseq_CommonMind_SNParray_copy$ID1 = commonmind_wgs$ID2
+gtcheck_snRNAseq_CommonMind_SNParray_copy$ID2 = commonmind_wgs$ID1
+gtcheck_snRNAseq_CommonMind_SNParray_merged = rbind(gtcheck_snRNAseq_CommonMind_SNParray, gtcheck_snRNAseq_CommonMind_SNParray_copy)
+
+metadataExtern = EXTERNAL_METADATA$WGS_CommonMind
+gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% main$SNParray_PsychAD,]
+gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2_CMC_ID = metadataExtern[match(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2, metadataExtern$SNP_report.Genotyping_Sample_ID),"Individual_ID"]
+dim(gtcheck_snRNAseq_CommonMind_SNParray_merged)
+write.csv(gtcheck_snRNAseq_CommonMind_SNParray_merged[order(gtcheck_snRNAseq_CommonMind_SNParray_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/commonmind_wgs.csv")
+
+####
+
+adsp_wgs_copy = adsp_wgs
+adsp_wgs_copy$ID1 = adsp_wgs$ID2
+adsp_wgs_copy$ID2 = adsp_wgs$ID1
+adsp_wgs_merged = rbind(adsp_wgs, adsp_wgs_copy)
+
+metadataExtern = EXTERNAL_METADATA$ADSP_WGS
+adsp_wgs_merged = adsp_wgs_merged[(adsp_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(adsp_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+dim(adsp_wgs_merged)
+adsp_wgs_merged = adsp_wgs_merged[adsp_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
+View(adsp_wgs_merged)
+write.csv(adsp_wgs_merged[order(adsp_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/adsp.csv")
+
+####
+
+mglia = microglia_snparray
+mglia_copy = microglia_snparray
+mglia_copy$ID1 = mglia$ID2
+mglia_copy$ID2 = mglia$ID1
+mglia_merged = rbind(mglia, mglia_copy)
+
+metadataExtern = EXTERNAL_METADATA$mglia
+mglia_merged = mglia_merged[(mglia_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(mglia_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+dim(mglia_merged)
+mglia_merged = mglia_merged[mglia_merged$ID1 %in% main$SNParray_PsychAD,]
+View(mglia_merged)
+write.csv(mglia_merged[order(mglia_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/mglia.csv")
+
+####
+
+rush_wgs_copy = rush_wgs
+rush_wgs_copy$ID1 = rush_wgs$ID2
+rush_wgs_copy$ID2 = rush_wgs$ID1
+rush_wgs_merged = rbind(rush_wgs, rush_wgs_copy)
+
+metadataExtern = EXTERNAL_METADATA$WGS_RUSH
+rush_wgs_merged = rush_wgs_merged[(rush_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(rush_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
+dim(rush_wgs_merged)
+rush_wgs_merged = rush_wgs_merged[rush_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
+View(rush_wgs_merged)
+write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/mglia.csv")
+
 
 ########################################################################################################
 # Add metadata from PRS
@@ -832,12 +983,12 @@
   write.csv(metadata[,prioritized], file = FINAL_METADATA_PATH, row.names=F)
   
   # Save metadata to Synapse
-  file = synStore(File(path="~/Desktop/clinical_metadata.csv", parent=SYNAPSE$root))
-  file = synStore(File(path="~/Desktop/clinical_metadata_full.csv", parent=SYNAPSE$individual_files))
+  file = synStore(File(path="~/Desktop/clinical_metadata.csv", parent=SYNAPSE$root), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
+  file = synStore(File(path="~/Desktop/clinical_metadata_full.csv", parent=SYNAPSE$individual_files), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
   
   # Copy merge & querying code for metadata to public github
   cmd_copy_metadata = paste0("cp ", unlist(PSYCHAD_METADATA_CODES), " ", PSYCHAD_METADATA_GITHUB_MINERVA)
-  system(paste0(cmd_copy_metadata, collapse=";"))
+  #system(paste0(cmd_copy_metadata, collapse=";"))
   #print(paste0("cd ", PSYCHAD_METADATA_GITHUB_MINERVA, "; git commit -a; git push"))
 
   # Paths to the code from Jaro's private bitbucket. We will copy code from merging & querying clinical metadata from there to his clone of psychad-metadata public github  
@@ -845,7 +996,6 @@
     metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
     metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
   )
-  
   
   # Save genotype convertor
   write.csv(metadata[,c("SubID", "SNParray_HBBC", "SNParray_CommonMind", "WGS_CommonMind", "WGS_RUSH", "WGS_Ampad", "SNParray_Microglia", "SNParray_PsychAD", "ADSP_SampleId")], file=file.path(outDir, "NPSAD_gt_converter_Jaro.csv"), quote=F, row.names=F)
@@ -960,3 +1110,10 @@
                        axis.text.y=element_text(colour = "black"), axis.ticks.x=element_blank(), legend.position = "none") + ylim(c(0,1))
   mpdf(paste0("sampleCount_hto_boxplot"), width=8, height=4); print(myPlot); dev.off()
 }
+
+
+
+
+
+
+
