@@ -7,19 +7,18 @@
   library(plyr)
   library(ggplot2)
   library(ggsci)
+  library(ggpubr)
   library(plotly)
   library(synapser)
   library(UpSetR)
   library(stringr)
   #synLogin('your_login','your_password')
-  synLogin('bendl','Ejhe8uca!')
   
   ####################################
   # Helper functions
   mpdf = function(x,width=7,height=7, ...)eval.parent(substitute({ pdf(paste0(outDir,"/plot_",make.names(x),".pdf"),useDingbats=F,width=width,height=height) })) # outDir must be defined as a global var
-  #outDir = "/sc/arion/projects/roussp01a/jaro/project_psychAD/visualization/"
-  outDir = "~/Desktop/project_psychAD/"
-  dir.create(file.path(outDir, "plotly"), recursive=T)########################################################################################################
+  outDir = "/sc/arion/projects/roussp01a/jaro/project_psychAD/visualization/"
+  dir.create(file.path(outDir, "plotly"), recursive=T)
 
   # Get upper triangle of the correlation matrix
   get_upper_tri <- function(cormat){
@@ -36,12 +35,18 @@
                  rush_clinical_metadata_1 = "syn35839674",
                  rush_clinical_metadata_2 = "syn26559760",
                  rush_clinical_metadata_3 = "syn26559745",
-                 rush_clinical_metadata_4 = "syn27555634")
+                 rush_clinical_metadata_4 = "syn27555634",
+                 imaging = "syn25671703")
+  
+  # Paths to the code from Jaro's private bitbucket. We will copy code from merging & querying clinical metadata from there to his clone of psychad-metadata public github  
+  PSYCHAD_METADATA_CODES = list(
+    metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
+    metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
+  )
   
   ####################################
   # Minerva paths
-  #RANDOMIZED_SAMPLES_LIST = "/sc/arion/projects/roussp01a/jaro/project_psychAD/psychAD-MSSM/cellranger_MULTIseq_pipeline/legacy/NPS_AD_rand_for_Shan.csv"   # Currently not used; list of samples that went through randomization step
-  FIXSHEET = "/sc/arion/projects/roussp01a/jaro/project_psychAD/psychAD-MSSM/cellranger_MULTIseq_pipeline/legacy/MSSM_HBCC_RUSH_clinical_metadata_combo.csv" # Helper spreadsheet in which I manually set boolean flag (0/1) for all diagnosis (originally, it was plaintext)
+  FIXSHEET = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/MSSM_HBCC_RUSH_fixsheet.csv"                 # Helper spreadsheet in which I manually set boolean flag (0/1) for all diagnosis (originally, it was plaintext)
   HARRY_UPDATED_LIST = "/sc/arion/projects/roussp01a/jaro/project_psychAD/psychAD-MSSM/Panos-NPS-Clinicals-1-12-2022.csv"    # Updated clinical metadata from MSBB that contains new variables such as ApoE
   GENOTYPE_METADATA_PATH = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/formatted_phenotypes_NPS_AD.tsv"      # Metadata for PsychAD SNParray; contains also default conversion to SubNum
   CUSTOM_AFTER_CHTCHECK_FIXES_MISC = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/fixes_mainTable.csv"        # Fixed of assignments of external genotypes to donor IDs 
@@ -49,20 +54,18 @@
   BLACKLISTED_SNPARRAYS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/blacklisted_SNParray_new.csv"   # blacklisted SNParray samples (for PsychAD), usually due to not matching irrecoverable identity   
   BLACKLISTED_SNRNASEQ = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/blacklisted_snRNAseq_new.csv"    # blacklisted snRNAseq samples, usually due to gt contamination or completely unknown identity
   DEMUX_STATS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/Allpools_w_rerun370_demux_stats.tsv"      # setting & output of vireo demultiplex (per-pool donors, genotypes, number of cells)
+  DEMUX_STATS_VIREO_PER_SAMPLE1 = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/demultiplexing_vireo1.csv"
+  DEMUX_STATS_VIREO_PER_SAMPLE2 = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/demultiplexing_vireo2.csv"
+  DEMUX_STATS_HTO = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snrnaseq_qc_from_prashant_old.csv"    # setting & output of HTO demultiplex (per-pool donors, genotypes, number of cells)
+  DEMUX_STATS_HTO_PER_SAMPLE = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/demultiplexing_hto.csv"
   FINAL_METADATA_PATH = "/sc/arion/projects/psychAD/NPS-AD/freeze1_rc/metadata/syn26527784_latest.csv"         # Minerva path for donor-level clinical metadata that is going to be compiled by this script
   FINAL_ALLINFO_PATH = "/sc/arion/projects/psychAD/NPS-AD/freeze1_rc/metadata/sample_to_donor_convertor.csv"   # Minerva path for snRNAseq_ID <-> SubID convertor that is going to be compiled by this script
-  SNRNASEQ_GTCHECK_PATH = "/sc/arion/projects/psychAD/gtcheck_2/results/allInfo.csv"     # list of samples processed by the first vireo run (some of them were re-calculated by the second vireo run)
-  SNRNASEQ_GTCHECK2_PATH = "/sc/arion/projects/psychAD/gtcheck_4/results/allInfo.csv"    # list of samples processed by the second vire run
+  SNRNASEQ_GTCHECK1_PATH = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/allInfo_dirlist1.csv"     # list of samples processed by the first vireo run (some of them were re-calculated by the second vireo run)
+  SNRNASEQ_GTCHECK2_PATH = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/allInfo_dirlist2.csv"    # list of samples processed by the second vire run
   PRS_FROM_DEEPIKA = "/sc/arion/projects/roussp01a/deepika/PRS/psychAD/PRSCS_SCORES/EUR.PRS.scores.tsv"    # PRS estimates from Deepika
   CDR_DOMAINS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/VA_CDR-Dom-10-2022.csv"        # CDR subdomains for MSSM samples that were additionally provided by Harry 
   CONVERTOR_TO_SUBID = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/convertor_to_SubID.csv" # Convertor of SubIDs to external genotypes (used as additional source of fixes for the initial dataset)
-  PSYCHAD_METADATA_GITHUB_MINERVA = "/sc/arion/projects/roussp01a/jaro/github/psychad_metadata/"   # Minerva clone of github code for creating (this file) & querying clinical metadata (we will copy scripts there)
-  
-  # Paths to the code from Jaro's private bitbucket. We will copy code from merging & querying clinical metadata from there to his clone of psychad-metadata public github  
-  PSYCHAD_METADATA_CODES = list(
-    metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
-    metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
-  )
+  PSYCHAD_METADATA_GITHUB_MINERVA = "/sc/arion/projects/roussp01a/jaro/repositories/psychad_metadata/"     # Minerva clone of github code for creating (this file) & querying clinical metadata (we will copy scripts there)
   
   # Description of external genotypes
   dsetForComparison = list(
@@ -100,9 +103,8 @@
                    metadata_subjectMatchColumn = "SynapseBrainID",
                    convertor_subjectMatchColumn = "AMPAD_msbb_individualID"),
     "SNParray_Microglia" = list(name = "SNParray_Microglia", 
-                       #genoPath = "/sc/arion/projects/Microglia/genotyping/Combined_Phase1/Phase1_TOPMed_imputation/phase1_2_merge/Phase1.2.microglia.merged.TOPMed.dbSNP_v155.r2_0.3.CHR1..22.vcf.gz", 
                        genoPath = "/sc/arion/projects/Microglia/genotyping/Combined_Phase1and2/Microglia_Phase1and2_322ind_TopMed_r2_0p3_FixedNames.vcf.gz", 
-                       plink = "/sc/arion/projects/psychAD/gtcheck/step2/files/Microglia_Phase1and2_322ind_TopMed_r2_0p3_FixedNames", 
+                       plink = "/sc/arion/projects/psychAD/genotypes/Microglia/Microglia_Phase1and2_322ind_TopMed_r2_0p3_FixedNames", 
                        king = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/Microglia_king.kin",
                        metadata = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/Microglia.csv", # TODO: check with Roman that this version is the most current 
                        metadata_sampleMatchColumn = "sample_name", 
@@ -395,7 +397,6 @@
   RUSH_clinical_meta_additional[,setdiff(RUSH_unionCols, colnames(RUSH_clinical_meta_additional))] = NA
   RUSH_clinical_meta_additional_2[,setdiff(RUSH_unionCols, colnames(RUSH_clinical_meta_additional_2))] = NA
   RUSH_clinical_meta = data.frame(rbind(RUSH_clinical_meta_original[!(RUSH_clinical_meta_original$projid %in% RUSH_clinical_meta_additional$projid) & !(RUSH_clinical_meta_original$projid %in% RUSH_clinical_meta_additional_2$projid),RUSH_unionCols],
-                                        #RUSH_clinical_meta_additional[!(RUSH_clinical_meta_additional$projid %in% RUSH_clinical_meta_additional_2$projid),RUSH_unionCols],
                                         RUSH_clinical_meta_additional_2[,RUSH_unionCols]))
   dim(RUSH_clinical_meta)
   RUSH_clinical_meta[RUSH_clinical_meta == "NULL"] = NA
@@ -466,6 +467,14 @@
     }
     return("")
   }))
+  
+  MSSM_imaging_meta = read.csv(synGet(entity=SYNAPSE$imaging)$path, header = T)
+  MSSM_imaging_meta$SubID = paste0("M", MSSM_imaging_meta$SubNum)
+  MSSM_clinical_meta$Imaging_XENum = MSSM_imaging_meta[match(MSSM_clinical_meta$SubID, MSSM_imaging_meta$SubID), "XENum"]
+  
+  #length(unique(MSSM_imaging_meta$SubID))
+  #table(unique(MSSM_imaging_meta$SubID) %in% MSSM_imaging_meta$SubID)
+  #table(unique(MSSM_imaging_meta$SubID) %in% metadata$SubID)
 }
 
 ########################################################################################################
@@ -508,7 +517,6 @@
   RUSH_unique = RUSH_clinical_meta[,!colnames(RUSH_clinical_meta) %in% c("age_death","msex","race7","educ","pmi","ceradsc","braaksc", "Dx")]
   colnames(RUSH_unique) = gsub("projid","SubID",colnames(RUSH_unique))
   
-  ##############ffixsheet###############
   # Load & apply fixsheet (manual assignment of donors to diagnosis)
   fixsheet = read.csv(FIXSHEET)
   fixsheet = fixsheet[,c("SubID", "Comment", unlist(DIAGNOSIS_CLASSIFICATION))]
@@ -575,7 +583,6 @@
   
   metadata[metadata$Brain_bank=="RUSH", "Dx_text"] = sapply(which(metadata$Brain_bank=="RUSH"), function(i)
     paste0(na.omit(sapply(c("demceph", "demcort", "demmotor", "demppa", "demother", "demdelir", "demdep"), function(x) {
-      #print(paste0(i, "-", x))
       z = metadata[i,x]
       if(is.na(z) | is.null(z) | z==0)
         return(NA) else {
@@ -660,7 +667,7 @@
 ########################################################################################################
 
 {
-  allInfo1 = read.csv(SNRNASEQ_GTCHECK_PATH)
+  allInfo1 = read.csv(SNRNASEQ_GTCHECK1_PATH)
   rownames(allInfo1) = allInfo1$Sample_ID
   allInfo2 = read.csv(SNRNASEQ_GTCHECK2_PATH)
   rownames(allInfo2) = allInfo2$Sample_ID
@@ -687,160 +694,9 @@
     nrow(allInfo[(allInfo$SubID == subID),])
   })
   
-  #metadata = metadata[metadata$SubID %in% fixsheet$SubID,]
-  
   # Remove donors without any snRNAseq library
-  metadata = metadata[metadata$snRNAseq_ID_count > 0,]
+  metadata = metadata[(metadata$snRNAseq_ID_count > 0) | !is.na(metadata$SNParray_PsychAD) | !is.na(metadata$Imaging_XENum),]
 }
-
-unresolvedMssm = metadata[!(metadata$SubID %in% metadataRestrictive$SubID) & (metadata$Brain_bank == "MSSM"),]
-unresolvedMssm = unresolvedMssm[!is.na(unresolvedMssm$SNParray_PsychAD),]
-unresolvedMssm$problematic_fromSnpArray = ifelse(unresolvedMssm$SNParray_PsychAD %in% problematicSnpArray, T, NA)
-main = unresolvedMssm
-
-GENOTYPE_FILE_SEX_MISMATCHES = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_from_karen_sex_mismatch_samples_list.tsv" # provided by Karen :: List of samples with a mismatch between reported sex and genetically imputed sex from genotype inf
-GENOTYPE_FILE_SEX_GTCALLED = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/MA000115_Kleopoulos_PlatesP1-P13_annotated_all_CHR_updated_imputed_sex.sexcheck.csv"
-GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_sex_from_karen.tsv"
-GENOTYPE_FILE_PROBLEMATIC_MISSINGNESS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snparray_from_karen_mind_0.05_het_3SD_samples.tsv" # provided by Karen :: List of samples with high (greater than 5%) missingness and/or excess (+/- 3SD) heterozygosity: /sc/arion/projects/roussp01a/karen/NPS_AD_imputed/phenotype_files/mind_0.05_het_3SD_samples.tsv --> I will remove these samples from the final version of QC'd/imputed data once the mismatches are rectified
-GENOTYPE_FILE_APOE_COMBINATIONS = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/APOE_assignment_NPS_AD_microglia_phase2.txt"
-GENOTYPE_FILE_ANEUPLOIDY = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/genotypes_aneuploidy_samples_list.tsv"
-GENOTYPE_FILE_ETHNICITY = "/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck/datafiles/genotypes_ancestry_assignment_multinom_3_PCs.tsv"
-
-sexGtcalledArray = read.csv(GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN, sep="\t")
-sexGtcalledArray$SubID = sexGtcalledArray$SubID
-rownames(sexGtcalledArray) = sexGtcalledArray$SubID
-main$sex_fromGenotype = sapply(sexGtcalledArray[main$SNParray_PsychAD,"SNPSEX"], function(sex) {
-  ifelse(sex == "F", "Female", ifelse(sex == "M", "Male", "Unassigned"))
-})
-main$check_sex = main$sex_fromGenotype == main$Sex
-
-sexGtcalledArray = read.csv(GENOTYPE_FILE_SEX_GTCALLED_FROM_KAREN, sep="\t")
-sexGtcalledArray$SubID = sexGtcalledArray$SubID
-rownames(sexGtcalledArray) = sexGtcalledArray$SubID
-main$sex_fromGenotype = sapply(sexGtcalledArray[main$SNParray_PsychAD,"SNPSEX"], function(sex) {
-  ifelse(sex == "F", "Female", ifelse(sex == "M", "Male", "Unassigned"))
-})
-main$check_sex = main$sex_fromGenotype == main$Sex
-
-apoeFromSnpArray = read.csv(GENOTYPE_FILE_APOE_COMBINATIONS, sep="\t")
-main$ApoE_gt = as.character(main$apoe_genotype)
-main$ApoE_gt_fromSnpArray = apoeFromSnpArray[match(main$SNParray_PsychAD, apoeFromSnpArray$Formatted_ID), "apo_alleles"]
-main$ApoE_gt_fromSnpArray = gsub("[e/]", "", main$ApoE_gt_fromSnpArray)
-main$MetaMatch_ApoeE_snpArray = sapply(1:nrow(main), function(i) {
-  if(is.na(main[i,"ApoE_gt"]) | is.na(main[i,"ApoE_gt_fromSnpArray"])) {
-    NA
-  } else if(main[i,"ApoE_gt"] == main[i,"ApoE_gt_fromSnpArray"]) {
-    T
-  } else if(((main[i,"ApoE_gt"] == "13") | (main[i,"ApoE_gt"] == "24")) & (main[i,"ApoE_gt_fromSnpArray"] == "13_or_24")) {
-    T
-  } else {
-    F
-  }
-})
-main$check_apoe = main$ApoE_gt_fromSnpArray == main$apoe_genotype
-
-## SNParray :: Ethnicity
-ethnicitySnpArray = read.csv(GENOTYPE_FILE_ETHNICITY, sep="\t")
-main$Ethnicity_fromSnpArray = ethnicitySnpArray[match(main$SNParray_PsychAD, ethnicitySnpArray$Formatted_ID), "superpop"]
-print(">> SNParray :: Ethnicity")
-print(table(main$Ethnicity_fromSnpArray))
-main$Ethnicity_standardized = gsub("White", "EUR", gsub("Black", "AFR", gsub("Hispanic", "AMR", main$Ethnicity)))
-main$Ethnicity_standardized[main$Ethnicity_standardized %in% c("Other", "Unknown", "Asian", "American Indian or Alaska Native")] = NA
-
-main$MC_Demo_SNParray_Ethnicity = main$Ethnicity_standardized == main$Ethnicity_fromSnpArray
-
-ampad_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Ampad_PsychAD_SNParray.txt.kin", sep="\t")
-gtcheck_snRNAseq_CommonMind_SNParray = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__CommonMind_SNParray_PsychAD_SNParray.txt.kin", sep="\t")
-microglia_snparray = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Microglia_PsychAD_SNParray.txt.kin", sep="\t")
-commonmind_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__CommonMind_WGS_PsychAD_SNParray.txt.kin", sep="\t")
-adsp_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__PsychAD_SNParray_ADSP_WGS.txt.kin", sep="\t")
-rush_wgs = read.csv("/sc/arion/projects/roussp01a/jaro/project_psychAD/gtcheck_4//results/king__Ps", sep="\t")
-
-####
-
-ampad_wgs_copy = ampad_wgs
-ampad_wgs_copy$ID1 = ampad_wgs$ID2
-ampad_wgs_copy$ID2 = ampad_wgs$ID1
-ampad_wgs_merged = rbind(ampad_wgs, ampad_wgs_copy)
-
-metadataExtern = EXTERNAL_METADATA$WGS_Ampad
-ampad_wgs_merged = ampad_wgs_merged[(ampad_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(ampad_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-dim(ampad_wgs_merged)
-ampad_wgs_merged = ampad_wgs_merged[ampad_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
-View(ampad_wgs_merged)
-write.csv(ampad_wgs_merged[order(ampad_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/ampad.csv")
-
-####
-
-gtcheck_snRNAseq_CommonMind_SNParray_copy = gtcheck_snRNAseq_CommonMind_SNParray
-gtcheck_snRNAseq_CommonMind_SNParray_copy$ID1 = gtcheck_snRNAseq_CommonMind_SNParray$ID2
-gtcheck_snRNAseq_CommonMind_SNParray_copy$ID2 = gtcheck_snRNAseq_CommonMind_SNParray$ID1
-gtcheck_snRNAseq_CommonMind_SNParray_merged = rbind(gtcheck_snRNAseq_CommonMind_SNParray, gtcheck_snRNAseq_CommonMind_SNParray_copy)
-
-metadataExtern = EXTERNAL_METADATA$SNParray_CommonMind
-gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% main$SNParray_PsychAD,]
-gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2_CMC_ID = metadataExtern[match(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2, metadataExtern$SNP_report.Genotyping_Sample_ID),"Individual_ID"]
-dim(gtcheck_snRNAseq_CommonMind_SNParray_merged)
-write.csv(gtcheck_snRNAseq_CommonMind_SNParray_merged[order(gtcheck_snRNAseq_CommonMind_SNParray_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/commonmind.csv")
-
-####
-
-gtcheck_snRNAseq_CommonMind_SNParray_copy = commonmind_wgs
-gtcheck_snRNAseq_CommonMind_SNParray_copy$ID1 = commonmind_wgs$ID2
-gtcheck_snRNAseq_CommonMind_SNParray_copy$ID2 = commonmind_wgs$ID1
-gtcheck_snRNAseq_CommonMind_SNParray_merged = rbind(gtcheck_snRNAseq_CommonMind_SNParray, gtcheck_snRNAseq_CommonMind_SNParray_copy)
-
-metadataExtern = EXTERNAL_METADATA$WGS_CommonMind
-gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-gtcheck_snRNAseq_CommonMind_SNParray_merged = gtcheck_snRNAseq_CommonMind_SNParray_merged[gtcheck_snRNAseq_CommonMind_SNParray_merged$ID1 %in% main$SNParray_PsychAD,]
-gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2_CMC_ID = metadataExtern[match(gtcheck_snRNAseq_CommonMind_SNParray_merged$ID2, metadataExtern$SNP_report.Genotyping_Sample_ID),"Individual_ID"]
-dim(gtcheck_snRNAseq_CommonMind_SNParray_merged)
-write.csv(gtcheck_snRNAseq_CommonMind_SNParray_merged[order(gtcheck_snRNAseq_CommonMind_SNParray_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/commonmind_wgs.csv")
-
-####
-
-adsp_wgs_copy = adsp_wgs
-adsp_wgs_copy$ID1 = adsp_wgs$ID2
-adsp_wgs_copy$ID2 = adsp_wgs$ID1
-adsp_wgs_merged = rbind(adsp_wgs, adsp_wgs_copy)
-
-metadataExtern = EXTERNAL_METADATA$ADSP_WGS
-adsp_wgs_merged = adsp_wgs_merged[(adsp_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(adsp_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-dim(adsp_wgs_merged)
-adsp_wgs_merged = adsp_wgs_merged[adsp_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
-View(adsp_wgs_merged)
-write.csv(adsp_wgs_merged[order(adsp_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/adsp.csv")
-
-####
-
-mglia = microglia_snparray
-mglia_copy = microglia_snparray
-mglia_copy$ID1 = mglia$ID2
-mglia_copy$ID2 = mglia$ID1
-mglia_merged = rbind(mglia, mglia_copy)
-
-metadataExtern = EXTERNAL_METADATA$mglia
-mglia_merged = mglia_merged[(mglia_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(mglia_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-dim(mglia_merged)
-mglia_merged = mglia_merged[mglia_merged$ID1 %in% main$SNParray_PsychAD,]
-View(mglia_merged)
-write.csv(mglia_merged[order(mglia_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/mglia.csv")
-
-####
-
-rush_wgs_copy = rush_wgs
-rush_wgs_copy$ID1 = rush_wgs$ID2
-rush_wgs_copy$ID2 = rush_wgs$ID1
-rush_wgs_merged = rbind(rush_wgs, rush_wgs_copy)
-
-metadataExtern = EXTERNAL_METADATA$WGS_RUSH
-rush_wgs_merged = rush_wgs_merged[(rush_wgs_merged$ID1 %in% GENOTYPE_METADATA$Formatted_ID) & !(rush_wgs_merged$ID2 %in% GENOTYPE_METADATA$Formatted_ID),]
-dim(rush_wgs_merged)
-rush_wgs_merged = rush_wgs_merged[rush_wgs_merged$ID1 %in% main$SNParray_PsychAD,]
-View(rush_wgs_merged)
-write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,], file="~/Desktop/mglia.csv")
-
 
 ########################################################################################################
 # Add metadata from PRS
@@ -947,7 +803,6 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
   })
   names(gtAvailability) = gtCols
   mpdf("gtAvailability", width=15, height=7); print(upset(fromList(gtAvailability), order.by = "freq", nsets = length(gtAvailability))); dev.off()
-  print(upset(fromList(gtAvailability), order.by = "freq", nsets = length(gtAvailability)))
   
   gtCols = c("SNParray_PsychAD", "SNParray_HBBC", "SNParray_CommonMind", "ADSP_SampleId", "WGS_RUSH", "WGS_CommonMind", "WGS_Ampad", "SNParray_Microglia")
   gtColsDef = c("SNParray_PsychAD", "SNParray_HBBC", "SNParray_CommonMind","ADSP_SampleId", "WGS_RUSH", "WGS_CommonMind", "WGS_Ampad", "SNParray_Microglia")
@@ -959,7 +814,6 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
   metadata$primary_genotype_dset = sapply(1:nrow(metadata), function(i) {
     gtCols[which(!is.na(metadata[i,gtCols]))[1]]
   })
-  sum(is.na(metadata$primary_genotype))
 }
 
 ########################################################################################################
@@ -969,7 +823,7 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
 {
   # Create list of variables that will be part of main metadata clinical file
   prioritized = c("SubID", "Brain_bank", "Age", "Sex", "Sex_chr_aneuploidy", "Ethnicity", "Dx", "pH", "PMI", "CERAD", "BRAAK_AD", "BRAAK_PD", "CDRScore", "Plq_Mn", "ApoE_gt", "CMC_individual_ID", "AMPAD_msbb_individualID", "snRNAseq_ID", unlist(DIAGNOSIS_CLASSIFICATION, use.names=F))
-  prioritized = c(prioritized, "SNParray_HBBC", "SNParray_CommonMind", "WGS_CommonMind", "WGS_RUSH", "WGS_Ampad", "SNParray_Microglia", "SNParray_PsychAD", "ADSP_SampleId")
+  prioritized = c(prioritized, "SNParray_HBBC", "SNParray_CommonMind", "WGS_CommonMind", "WGS_RUSH", "WGS_Ampad", "SNParray_Microglia", "SNParray_PsychAD", "ADSP_SampleId", "Imaging_XENum")
   prioritized = c(prioritized, paste0("nps_", names(MSSM_NPS)),  paste0("nps_", gsub("Cur", "Hx", names(MSSM_NPS))))
   prioritized = c(prioritized, colnames(prsDeepika)[2:length(colnames(prsDeepika))])
   prioritized = c(prioritized, as.character(unlist(ADDIT_NEUROPAT_METRICS)))
@@ -978,24 +832,17 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
   # Save metadata to Minerva
   colnames(metadata) = gsub("^BRAAK$", "BRAAK_AD", colnames(metadata))
   colnames(metadata) = gsub("^apoe_genotype$", "ApoE_gt", colnames(metadata))
+  write.csv(metadata, file = file.path(outDir, "clinical_metadata_full.csv"), row.names=F)
   write.csv(metadata[,prioritized], file = file.path(outDir, "clinical_metadata.csv"), row.names=F)
-  write.csv(metadata, file = "~/Desktop/clinical_metadata_full.csv", row.names=F)
   write.csv(metadata[,prioritized], file = FINAL_METADATA_PATH, row.names=F)
   
   # Save metadata to Synapse
-  file = synStore(File(path="~/Desktop/clinical_metadata.csv", parent=SYNAPSE$root), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
-  file = synStore(File(path="~/Desktop/clinical_metadata_full.csv", parent=SYNAPSE$individual_files), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
+  file = synStore(File(path=file.path(outDir, "clinical_metadata.csv"), parent=SYNAPSE$root), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
+  file = synStore(File(path=file.path(outDir, "clinical_metadata_full.csv"), parent=SYNAPSE$individual_files), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_merge.R")
   
   # Copy merge & querying code for metadata to public github
   cmd_copy_metadata = paste0("cp ", unlist(PSYCHAD_METADATA_CODES), " ", PSYCHAD_METADATA_GITHUB_MINERVA)
-  #system(paste0(cmd_copy_metadata, collapse=";"))
-  #print(paste0("cd ", PSYCHAD_METADATA_GITHUB_MINERVA, "; git commit -a; git push"))
-
-  # Paths to the code from Jaro's private bitbucket. We will copy code from merging & querying clinical metadata from there to his clone of psychad-metadata public github  
-  PSYCHAD_METADATA_CODES = list(
-    metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
-    metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
-  )
+  sapply(cmd_copy_metadata, system)
   
   # Save genotype convertor
   write.csv(metadata[,c("SubID", "SNParray_HBBC", "SNParray_CommonMind", "WGS_CommonMind", "WGS_RUSH", "WGS_Ampad", "SNParray_Microglia", "SNParray_PsychAD", "ADSP_SampleId")], file=file.path(outDir, "NPSAD_gt_converter_Jaro.csv"), quote=F, row.names=F)
@@ -1047,9 +894,10 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
 }
 
 {
-  cellCountDf = do.call("rbind.data.frame", sapply(1:nrow(demuxStats), function(i) { 
+  cellCountDf = do.call("rbind.data.frame", lapply(1:nrow(demuxStats), function(i) {
     x = as.numeric(strsplit(demuxStats$cell_counts[i], split=",")[[1]])
     x = x[order(x, decreasing=T)]
+    c(x, rep(1, 6-length(x)))
   }))
   rownames(cellCountDf) = demuxStats$sample
   colnames(cellCountDf) = paste0("libcells_", 1:6)
@@ -1077,7 +925,6 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
 }
 
 {
-  DEMUX_STATS_HTO = "/sc/arion/projects/roussp01a/jaro/project_psychAD/metadata/snrnaseq_qc_from_prashant_old.csv"
   demuxHtoStats = read.csv(DEMUX_STATS_HTO, skip=2)[,c("SAMPLE", "N_CELLS_AFTER_DEMUX_CS")]
   demuxHtoStats = demuxHtoStats[!duplicated(demuxHtoStats$SAMPLE),]
   
@@ -1111,9 +958,91 @@ write.csv(rush_wgs_merged[order(rush_wgs_merged$Kinship, decreasing=T),][1:1000,
   mpdf(paste0("sampleCount_hto_boxplot"), width=8, height=4); print(myPlot); dev.off()
 }
 
-
-
-
-
-
+{ # Comparison of number of cells from replicates in vireo and HTO (trashy coding; will fix later)
+  allCells_vireo = unlist(sapply(demuxStats$cell_counts, function(cellcounts) {
+    unlist(as.numeric(strsplit(cellcounts, ",")[[1]]))
+  }))
+  allCells_vireo = cbind.data.frame(allCells_vireo, "vireo")
+  colnames(allCells_vireo) = c("cell_count", "demultiplexing")
+  
+  allCells_hto = unlist(sapply(demuxHtoStats$N_CELLS_AFTER_DEMUX_CS, function(cellcounts) {
+    unlist(as.numeric(sapply(strsplit(strsplit(cellcounts, ",")[[1]], ":"), function(x) x[2])))
+  }))
+  allCells_hto = cbind.data.frame(allCells_hto, "hto")
+  colnames(allCells_hto) = c("cell_count", "demultiplexing")
+  
+  df = rbind.data.frame(allCells_vireo, allCells_hto)
+  vireo_hto_hist = ggplot(df, aes(cell_count, fill=demultiplexing)) + theme_classic() +
+    geom_histogram(
+      alpha=0.5, color='gray80',
+      position="identity", bins=160)
+  mpdf(paste0("vireo_hto_hist"), width=8, height=4); print(vireo_hto_hist); dev.off()
+  
+  sum(na.omit(df[df$demultiplexing=="vireo","cell_count"])) / 1E6
+  sum(na.omit(df[df$demultiplexing=="hto","cell_count"])) / 1E6
+  
+  allInfo_hto = read.csv(DEMUX_STATS_HTO_PER_SAMPLE)
+  dim(allInfo_hto)
+  
+  htoDf = do.call("rbind", lapply(demuxHtoStats$N_CELLS_AFTER_DEMUX_CS, function(cellcounts) {
+    myDf = cbind.data.frame(
+      unlist(sapply(strsplit(strsplit(cellcounts, ",")[[1]], ":"), function(x) x[1])),
+      unlist(as.numeric(sapply(strsplit(strsplit(cellcounts, ",")[[1]], ":"), function(x) x[2]))))
+    colnames(myDf) = c("donor", "cellcounts")
+    myDf[!(myDf$donor %in% c("Not", "Not Present")),]
+  }))
+  htoDf$order = sapply(1:nrow(htoDf), function(i) {
+    sum(htoDf[1:i,"donor"] == htoDf[i,"donor"])
+  })
+  htoDf = htoDf[htoDf$order <= 2,]
+  donors = intersect(unique(htoDf$donor[htoDf$order==1]), unique(htoDf$donor[htoDf$order==2]))
+  
+  df = do.call("rbind.data.frame", lapply(donors, function(donor) {
+    c(donor, as.numeric(htoDf[(htoDf$donor==donor) & (htoDf$order==1),"cellcounts"]), as.numeric(htoDf[(htoDf$donor==donor) & (htoDf$order==2),"cellcounts"]))
+  }))
+  colnames(df) = c("donor", "rep1_cells", "rep2_cells")
+  df$rep1_cells = as.numeric(df$rep1_cells)
+  df$rep2_cells = as.numeric(df$rep2_cells)
+  cor(df$rep1_cells, df$rep2_cells, method="spearman")
+  cor(df$rep1_cells, df$rep2_cells, method="pearson")
+  
+  myPlot = ggscatter(df, x="rep1_cells", y="rep2_cells", add="reg.line", size=0.05, conf.int=TRUE, cor.coef=TRUE, cor.method="spearman",
+                     xlab = "HTO demux: cells per sample", ylab = "Vireo demux: cells per sample")
+  mpdf(paste0("cellCount_hto"), width=4, height=4); print(myPlot); dev.off()
+  
+  #####
+  
+  allInfo_vireo1 = read.csv(DEMUX_STATS_VIREO_PER_SAMPLE1)
+  allInfo_vireo2 = read.csv(DEMUX_STATS_VIREO_PER_SAMPLE2)
+  intCols = intersect(colnames(allInfo_vireo1), colnames(allInfo_vireo2))
+  allInfo_vireo = rbind.data.frame(allInfo_vireo1[!(allInfo_vireo1$ID %in% allInfo_vireo2$ID),intCols], allInfo_vireo2[,intCols])
+  allInfo_vireo$comb = allInfo_vireo$bestMatchID
+  
+  main_vireo = read.csv(file.path(outDir, "clinical_metadata_full.csv"))
+  main_vireo = main_vireo[main_vireo$snRNAseq_ID_count==2,]
+  dim(main_vireo)
+  main_vireo$snRNAseq_ID1 = sapply(main_vireo$snRNAseq_ID, function(x) strsplit(x, ";")[[1]][1])
+  main_vireo$snRNAseq_ID2 = sapply(main_vireo$snRNAseq_ID, function(x) strsplit(x, ";")[[1]][2])
+  main_vireo$subID_ID1 = sapply(main_vireo$snRNAseq_ID1, function(x) { strsplit(x,"_")[[1]][1] })
+  main_vireo$subID_ID2 = sapply(main_vireo$snRNAseq_ID2, function(x) { strsplit(x,"_")[[1]][1] })
+  main_vireo$pool_ID1 = sapply(main_vireo$snRNAseq_ID1, function(x) { x = strsplit(x,"_")[[1]]; paste0(x[2:(length(x)-1)], "-cDNA", collapse="_") })
+  main_vireo$pool_ID2 = sapply(main_vireo$snRNAseq_ID2, function(x) { x = strsplit(x,"_")[[1]]; paste0(x[2:(length(x)-1)], "-cDNA", collapse="_") })
+  
+  df = do.call("rbind.data.frame", lapply(1:nrow(main_vireo), function(i) {
+    x1 = demuxStats[(demuxStats$sample == main_vireo$pool_ID1[i]),]
+    x2 = demuxStats[(demuxStats$sample == main_vireo$pool_ID2[i]),]
+    c(main_vireo$subID_ID1[i], 
+      as.numeric(strsplit(x1$cell_counts, ",")[[1]][which(strsplit(x1$SubIDs, ",")[[1]] == main_vireo$subID_ID1[i])]),
+      as.numeric(strsplit(x2$cell_counts, ",")[[1]][which(strsplit(x2$SubIDs, ",")[[1]] == main_vireo$subID_ID2[i])]))
+  }))
+  colnames(df) = c("donor", "rep1_cells", "rep2_cells")
+  df$rep1_cells = as.numeric(df$rep1_cells)
+  df$rep2_cells = as.numeric(df$rep2_cells)
+  cor(as.numeric(df$rep1_cells), as.numeric(df$rep2_cells), method="spearman")
+  cor(as.numeric(df$rep1_cells), as.numeric(df$rep2_cells), method="pearson")
+  
+  myPlot = ggscatter(df, x="rep1_cells", y="rep2_cells", add="reg.line", size=0.05, conf.int=TRUE, cor.coef=TRUE, cor.method="spearman",
+                     xlab = "HTO demux: cells per sample", ylab = "Vireo demux: cells per sample")
+  mpdf(paste0("cellCount_vireo"), width=4, height=4); print(myPlot); dev.off()
+}
 

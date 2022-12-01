@@ -5,10 +5,16 @@ library(ggsci)
 library(synapser)
 
 # Load data from Synapse
-synLogin('login','password')
+#synLogin('login','password')
 metadata = read.csv(synGet(entity='syn44716176')$path, header = T)
 metadata = metadata[metadata$snRNAseq_ID_count > 0,]
 rownames(metadata) = metadata$SubID
+
+PSYCHAD_METADATA_CODES = list(
+  metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
+  metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
+)
+PSYCHAD_METADATA_GITHUB_MINERVA = "/sc/arion/projects/roussp01a/jaro/repositories/psychad_metadata/"     # Minerva clone of github code for creating (this file) & querying clinical metadata (we will copy scripts there)
 
 ##########################
 # Sets of diagnosis levels
@@ -24,7 +30,7 @@ DIAGNOSIS_BENIGN = c("Anxiety", "Migraine_headaches", DIAGNOSIS_CLASSIFICATION$m
 # UpsetR showing overlaps across diagnosis groups (here it is for *clinical* diagnosis; pathology-level metrics not taken into account)
 #metadata=metadata[metadata$PD==1,]
 all_dx = setdiff(unlist(DIAGNOSIS_CLASSIFICATION), DIAGNOSIS_BENIGN)
-all_dx = all_dx[sapply(all_dx, function(x) sum(na.omit(metadata[,x])==1) > 0)] # Keep only categories with non-zero counts
+#all_dx = all_dx[sapply(all_dx, function(x) sum(na.omit(metadata[,x])==1) > 0)] # Keep only categories with non-zero counts
 deleterious_dx = setdiff(all_dx, DIAGNOSIS_BENIGN)
 #metadata$Control = sapply(1:nrow(metadata), function(i) 
 #  ifelse((sum(na.omit(as.integer(metadata[i,all_dx]))) > 0) | (metadata[i,"CERAD"] %in% c(2,3,4)) | (metadata[i,"BRAAK_AD"] %in% c(1,2,3,4,5,6)), 0, 1))
@@ -32,12 +38,12 @@ deleterious_dx = setdiff(all_dx, DIAGNOSIS_BENIGN)
 #  ifelse((sum(na.omit(as.integer(metadata[i,all_dx]))) > 0) | (metadata[i,"CERAD"] %in% c(2,3,4)) | (metadata[i,"BRAAK_AD"] %in% c(1,2,3,4,5,6)), 0, 1))
 #metadata$Control = sapply(1:nrow(metadata), function(i) sum(na.omit(as.integer(metadata[i, all_dx]))) == 0 )
 
-#listInput = lapply(c(setdiff(all_dx, c(DIAGNOSIS_BENIGN, "MCI", "Dementia")), "Control"), function(colName) {
-#  print(colName)
-#  metadata[which(as.integer(metadata[,colName]) == 1), "SubID"]
-#})
-#names(listInput) = c(setdiff(all_dx, c(DIAGNOSIS_BENIGN, "MCI", "Dementia")), "Control")
-#upset(fromList(listInput), order.by = "freq", nsets = length(all_dx))
+listInput = lapply(c(setdiff(all_dx, c(DIAGNOSIS_BENIGN, "MCI", "Dementia"))), function(colName) {
+  print(colName)
+  metadata[which(as.integer(metadata[,colName]) == 1), "SubID"]
+})
+names(listInput) = c(setdiff(all_dx, c(DIAGNOSIS_BENIGN, "MCI", "Dementia")))
+upset(fromList(listInput), order.by = "freq", nsets = length(all_dx))
 
 #hist(metadata[metadata$Control==1, "Age"], breaks = 20)
 #hist(metadata[(metadata$Control==1) & (metadata$Brain_bank=="HBCC"), "Age"], breaks = 20)
@@ -64,6 +70,12 @@ SubID_groups = list(
   "controls_supercontrols" = na.omit(sapply(1:nrow(metadata), function(i) {
     ifelse((sum(na.omit(as.integer(metadata[i,setdiff(deleterious_dx, c("AD"))]))) == 0) & 
              (((metadata[i,"CERAD"] %in% c(1)) & (metadata[i,"BRAAK_AD"] %in% c(0, 1, 2))) | ((metadata[i,"Brain_bank"] == "HBCC"))), 
+           metadata[i,"SubID"], NA)
+  })),
+  "controls_supercontrols_for_aging" = na.omit(sapply(1:nrow(metadata), function(i) {
+    ifelse((sum(na.omit(as.integer(metadata[i,setdiff(deleterious_dx, c("AD"))]))) == 0) & 
+             (((metadata[i,"CERAD"] %in% c(1)) & (metadata[i,"BRAAK_AD"] %in% c(0, 1, 2))) | ((metadata[i,"Brain_bank"] == "HBCC"))) &
+             (metadata[i,"Brain_bank"] != "RUSH"), 
            metadata[i,"SubID"], NA)
   })),
   "AD" = na.omit(sapply(1:nrow(metadata), function(i) {
@@ -187,6 +199,7 @@ SubID_group_desc = list(
   "controls_neuropathological" = "CERAD=(1,2) and Braak=(0,1,2) and (secondary diagnosis allowed)",
   "controls_neuropathological_clinical" = "CERAD=(1,2) and Braak=(0,1,2) and (secondary diagnosis not allowed; MCI/dementia status not checked)",
   "controls_supercontrols" = "CERAD=(1), Braak=(0,1,2) and (secondary diagnosis not allowed;  MCI/dementia is checked too)",
+  "controls_supercontrols_for_aging" = "CERAD=(1), Braak=(0,1,2) and (secondary diagnosis not allowed;  MCI/dementia is checked too); RUSH samples excluded",
   "AD" = "CERAD=(2,3,4), Braak=(3,4,5,6) and (must be clinically MCI or Dementia) and (secondary diagnosis not allowed); One of variables (CERAD, Braak, MSSM:CDR/RUSH:cogdx) can be NA",
   "AD_strict" = "CERAD=(4) and Braak=(3,4,5,6) and (must be clinically Dementia) and (secondary diagnosis not allowed)",
   "CERAD_1" = "(CERAD=1) and (secondary diagnosis not allowed;AD|MCI|Dementia status not checked)",
@@ -211,8 +224,9 @@ SubID_group_desc = list(
 
 SubID_group_issues = list(
   "controls_neuropathological" = "If CERAD, Braak are not defined, sample is ignored",
-  "controls_neuropathological_clinical" = "If CERAD, Braak, or CRD(MSSM)/cogdx(RUSH) are not defined, sample is ignored",
-  "controls_supercontrols" = "If CERAD, Braak, or CRD(MSSM)/cogdx(RUSH) are not defined, sample is ignored",
+  "controls_neuropathological_clinical" = "If CERAD, Braak, or CDR(MSSM)/cogdx(RUSH) are not defined, sample is ignored",
+  "controls_supercontrols" = "If CERAD, Braak, or CDR(MSSM)/cogdx(RUSH) are not defined, sample is ignored",
+  "controls_supercontrols_for_aging" = "If CERAD, Braak, or CDR(MSSM)/cogdx(RUSH) are not defined, sample is ignored",
   "AD" = "",
   "AD_strict" = "",
   "CERAD_1" = "",
@@ -301,5 +315,9 @@ table(metadata$sum)
 
 saveRDS(SubID_groups, file="~/Desktop/clinical_metadata_sampleSets.RDS")
 
+# Copy merge & querying code for metadata to public github
+cmd_copy_metadata = paste0("cp ", unlist(PSYCHAD_METADATA_CODES), " ", PSYCHAD_METADATA_GITHUB_MINERVA)
+sapply(cmd_copy_metadata, system)
+
 ## upload on synapse
-file <- synStore(File(path="~/Desktop/clinical_metadata_sampleSets.RDS", parent="syn22399913", used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_querying.R"))
+file <- synStore(File(path="~/Desktop/clinical_metadata_sampleSets.RDS", parent="syn22399913"), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_querying.R")
