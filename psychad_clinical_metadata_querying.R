@@ -5,9 +5,9 @@ library(ggsci)
 library(synapser)
 
 # Load data from Synapse
-#synLogin('login','password')
-metadata = read.csv(synGet(entity='syn44716176')$path, header = T)
-metadata = metadata[metadata$snRNAseq_ID_count > 0,]
+synLogin('','')
+metadataAll = read.csv(synGet(entity='syn44716176')$path, header = T)
+metadata = metadataAll[metadataAll$snRNAseq_ID_count > 0,]
 rownames(metadata) = metadata$SubID
 
 PSYCHAD_METADATA_CODES = list(
@@ -184,14 +184,6 @@ individual_dx2_counts = lapply(individual_dx, function(dx) {
 names(individual_dx2_counts) = individual_dx
 sapply(individual_dx2_counts, function(dxx) length(dxx))
 
-individual_dx3_counts = lapply(individual_dx, function(dx) {
-  na.omit(sapply(1:nrow(metadata), function(i) {
-    ifelse((metadata[i,dx] == 1), metadata[i,"SubID"], NA)
-  }))
-})
-names(individual_dx3_counts) = individual_dx
-sapply(individual_dx3_counts, function(dxx) length(dxx))
-
 ##########################
 # Summary table of diagnostic groups
 
@@ -255,17 +247,19 @@ summary_df = do.call("cbind.data.frame", list(
   "size_mssm" = sapply(names(SubID_group_desc), function(cat) sum(SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="MSSM","SubID"])),
   "size_rush" = sapply(names(SubID_group_desc), function(cat) sum(SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="RUSH","SubID"])),
   "size_hbcc" = sapply(names(SubID_group_desc), function(cat) sum(SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="HBCC","SubID"])),
+  "size_mssm" = sapply(names(SubID_group_desc), function(cat) mean(metadata[SubID_groups[[cat]][SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="MSSM","SubID"]],"Age"] )),
+  "size_rush" = sapply(names(SubID_group_desc), function(cat) mean(metadata[SubID_groups[[cat]][SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="RUSH","SubID"]],"Age"] )),
+  "size_hbcc" = sapply(names(SubID_group_desc), function(cat) mean(metadata[SubID_groups[[cat]][SubID_groups[[cat]] %in% metadata[metadata$Brain_bank=="HBCC","SubID"]],"Age"] )),
   "desc" = unlist(SubID_group_desc),
   "notes" = unlist(SubID_group_issues)))
 
-View(summary_df)
-write.csv(summary_df, file="~/Desktop/psychad_distribution.csv")
+#write.csv(summary_df, file="~/Desktop/psychad_distribution.csv")
 
 ##
 metadata$sum = 0
 metadata$sum = sapply(1:nrow(metadata), function(i) sum(na.omit(as.integer(metadata[i,all_dx]))) )
 table(metadata$sum)
-write.csv(metadata, file="./Desktop/psychad_distribution_2.csv")
+#write.csv(metadata, file="~/Desktop/psychad_distribution_2.csv")
 ##
 
 # Get upper triangle of the correlation matrix
@@ -294,7 +288,6 @@ corr = ggplot(corrMatrixOut, aes(variable, ID, fill = value)) +
   coord_equal() + theme_bw() + theme(axis.title.x=element_blank(), axis.text.x=element_text(colour = "black"), axis.text.y=element_text(colour = "black"), axis.ticks.x=element_blank(),
                                      axis.title.y=element_blank(),  axis.ticks.y=element_blank())
 corr = corr + geom_text(aes(variable, ID, label = round(value, 2)), color = "black", size = 3) 
-corr
 
 metadata = metadata[!((metadata$Brain_bank == "RUSH") & is.na(metadata$Sex)),]
 sum(!is.na(metadata[metadata$Brain_bank=="MSSM","PLAQUE"])) / length(metadata[metadata$Brain_bank=="MSSM","PLAQUE"])
@@ -308,16 +301,22 @@ sum(!is.na(metadata[metadata$Brain_bank=="RUSH","BRAAK_AD"])) / length(metadata[
 print("Samples by Brain_bank")
 table(metadata$Brain_bank)
 
+length(metadataAll$SubID)
+nrow(metadataAll[!is.na(metadataAll$SNParray_PsychAD),])
+nrow(metadataAll[!is.na(metadataAll$Imaging_XENum),])
+#table(unique(MSSM_imaging_meta$SubID) %in% MSSM_imaging_meta$SubID)
+#table(unique(MSSM_imaging_meta$SubID) %in% metadata$SubID)
+
 #
 print("Number of clinically diagnosed diseases per donor")
 metadata$sum = sapply(1:nrow(metadata), function(i) sum(na.omit(as.integer(metadata[i, unlist(DIAGNOSIS_CLASSIFICATION)]))))
 table(metadata$sum)
 
-saveRDS(SubID_groups, file="~/Desktop/clinical_metadata_sampleSets.RDS")
+saveRDS(SubID_groups, file="/sc/arion/projects/roussp01a/jaro/clinical_metadata_sampleSets.RDS")
 
 # Copy merge & querying code for metadata to public github
 cmd_copy_metadata = paste0("cp ", unlist(PSYCHAD_METADATA_CODES), " ", PSYCHAD_METADATA_GITHUB_MINERVA)
 sapply(cmd_copy_metadata, system)
 
 ## upload on synapse
-file <- synStore(File(path="~/Desktop/clinical_metadata_sampleSets.RDS", parent="syn22399913"), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_querying.R")
+file <- synStore(File(path="/sc/arion/projects/roussp01a/jaro/clinical_metadata_sampleSets.RDS", parent="syn22399913"), used="https://github.com/DiseaseNeuroGenomics/psychad_metadata/blob/main/psychad_clinical_metadata_querying.R")

@@ -12,7 +12,7 @@
   library(synapser)
   library(UpSetR)
   library(stringr)
-  #synLogin('your_login','your_password')
+  synLogin('','')
   
   ####################################
   # Helper functions
@@ -149,6 +149,9 @@
   # SNParray IDs from Karen indicating samples with chromosome aneuploidy (note that only samples from PsychAD SNParray were checked)
   SEX_CHR_ANEUPLOIDY = c("214654", "173395", "120572", "214934", "44560", "192838", "34770", "182904", "201271", "214975", "191374", "214696", "214932", "208726")
   
+  # Blacklisted donors due to low/high number of cells or expressed genes or chrM reads (provided by Donghoon) 
+  BLACKLISTED_SUBIDS = c("M38917", "M35919", "M67962", "M61399", "M66064", "M16923", "M50299", "M5617", "M27867", "R45329526", "M39184", "M92978", "M72780", "M74333", "M63218")
+  
   # Vocabulary for MSBB / neuropsychiatric symptoms
   MSSM_NPS = list(
     "MoodDysCurValue" = "Dysphoria",
@@ -225,8 +228,8 @@
     "1" = "NCI: No cognitive impairment (No impaired domains)",
     "2" = "MCI: Mild cognitive impairment (One impaired domain) and NO other cause of CI",
     "3" =  "MCI: Mild cognitive impairment (One impaired domain) AND another cause of CI",
-    "4" = "AD: Alzheimer’s dementia and NO other cause of CI (NINCDS PROB AD)",
-    "5" = "AD: Alzheimer’s dementia AND another cause of CI (NINCDS POSS AD)",
+    "4" = "AD: Alzheimers dementia and NO other cause of CI (NINCDS PROB AD)",
+    "5" = "AD: Alzheimers dementia AND another cause of CI (NINCDS POSS AD)",
     "6" = "Other dementia: Other primary cause of dementia"
   )
   
@@ -660,6 +663,9 @@
       metadata[fx$SubID, fx$columnName] = ifelse(fx$value == "", NA, fx$value)
     }
   }
+  
+  # Remove blacklisted SubIDs
+  metadata = metadata[!metadata$SubID %in% BLACKLISTED_SUBIDS,]
 }
 
 ########################################################################################################
@@ -1045,4 +1051,3 @@
                      xlab = "HTO demux: cells per sample", ylab = "Vireo demux: cells per sample")
   mpdf(paste0("cellCount_vireo"), width=4, height=4); print(myPlot); dev.off()
 }
-
