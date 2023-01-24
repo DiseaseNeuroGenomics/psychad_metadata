@@ -41,7 +41,8 @@
   # Paths to the code from Jaro's private bitbucket. We will copy code from merging & querying clinical metadata from there to his clone of psychad-metadata public github  
   PSYCHAD_METADATA_CODES = list(
     metadata_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_merge.R",
-    metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
+    metadata_querying = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R",
+    metadata_genotype_create = "/sc/arion/projects/roussp01a/jaro/atacseq_ad/NYGC_AD_R01/other_projects/psychad_clinical_metadata_querying.R"
   )
   
   ####################################
@@ -149,8 +150,9 @@
   # SNParray IDs from Karen indicating samples with chromosome aneuploidy (note that only samples from PsychAD SNParray were checked)
   SEX_CHR_ANEUPLOIDY = c("214654", "173395", "120572", "214934", "44560", "192838", "34770", "182904", "201271", "214975", "191374", "214696", "214932", "208726")
   
-  # Blacklisted donors due to low/high number of cells or expressed genes or chrM reads (provided by Donghoon) 
-  BLACKLISTED_SUBIDS = c("M38917", "M35919", "M67962", "M61399", "M66064", "M16923", "M50299", "M5617", "M27867", "R45329526", "M39184", "M92978", "M72780", "M74333", "M63218")
+  # Blacklisted donors 
+  BLACKLISTED_SUBIDS = c("M38917", "M35919", "M67962", "M61399", "M66064", "M16923", "M50299", "M5617", "M27867", "R45329526", "M39184", "M92978", "M72780", "M74333", "M63218", # due to low/high number of cells or expressed genes or chrM reads (provided by Donghoon) 
+                         "M64806", "H1985", "M28710", "M31358", "M53193", "M98156", "R45329526")  # Due to sex check (by Donghoon)
   
   # Vocabulary for MSBB / neuropsychiatric symptoms
   MSSM_NPS = list(
@@ -635,10 +637,6 @@
 ########################################################################################################
 
 {
-  # Remove blacklisted SNParrays 
-  blacklisted_snparray = read.csv(BLACKLISTED_SNPARRAYS)
-  metadata$SNParray_PsychAD = ifelse(metadata$SNParray_PsychAD %in% blacklisted_snparray$ID, NA, metadata$SNParray_PsychAD)
-  
   # Make custom changes, mostly assigning different SNParrays (or CMC/AMPAD/HBCC/Microglia IDs) to donors (SubIDs)
   convertToSubID = read.csv(CONVERTOR_TO_SUBID, stringsAsFactors=F)
   convertToSubID$RUSH_ID = str_pad(convertToSubID$RUSH_ID, 8, pad = "0")
@@ -663,7 +661,7 @@
       metadata[fx$SubID, fx$columnName] = ifelse(fx$value == "", NA, fx$value)
     }
   }
-  
+
   # Remove blacklisted SubIDs
   metadata = metadata[!metadata$SubID %in% BLACKLISTED_SUBIDS,]
 }
@@ -699,6 +697,10 @@
   metadata$snRNAseq_ID_count = sapply(metadata$SubID, function(subID) {
     nrow(allInfo[(allInfo$SubID == subID),])
   })
+  
+  # Remove blacklisted SNParrays
+  blacklisted_snparray = read.csv(BLACKLISTED_SNPARRAYS)
+  metadata$SNParray_PsychAD = ifelse(metadata$SNParray_PsychAD %in% blacklisted_snparray$ID, NA, metadata$SNParray_PsychAD)
   
   # Remove donors without any snRNAseq library
   metadata = metadata[(metadata$snRNAseq_ID_count > 0) | !is.na(metadata$SNParray_PsychAD) | !is.na(metadata$Imaging_XENum),]
